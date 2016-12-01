@@ -1,6 +1,6 @@
 import random
 from bitarray import bitarray
-    
+
 class Genome:
 
     mutation_rate = 0.015
@@ -72,6 +72,9 @@ class Genome:
     def insertion(self, location):
         self.sequence.insert(location, random.choice([0, 1]))
         return 3
+
+    def subsequence(self, i, j):
+        return self.sequence[i:j]
 
     def __iter__(self):
         return iter([int(b) for b in self.sequence])
