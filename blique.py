@@ -3,6 +3,7 @@ from genalg.biology import *
 import random
 import time
 import curses
+import math
 
 NORTH = 0
 EAST = 1
@@ -11,6 +12,9 @@ WEST = 3
 
 LEFT = -1
 RIGHT = 1
+
+def sigmoid(x):
+  return 1 / (1 + math.exp(-x))
 
 def addstr(stdscr, x, y, s, color=None):
     try:
@@ -26,8 +30,10 @@ def main(stdscr):
     if not curses.has_colors():
         raise Exception('NO COLOR')
     height, width = curses.LINES, curses.COLS
+    Blique.x = width // 2
+    Blique.y = height // 2
     g = GeneticAlg()
-    bliques = Population(size=1, member=Blique, initialize=True)
+    bliques = Population(size=5, member=Blique, initialize=True)
     for i, gen in enumerate(g.stepper(bliques)):
         environment = Environment(height, width, gen, stdscr)
         environment.update()
@@ -35,15 +41,15 @@ def main(stdscr):
         key = stdscr.getkey()
         if str(key) == 'q':
             break
-    stdscr.getkey()
 
 class Blique(Individual):
 
     genome_length = 24
     max_move_distance = 3
-    max_age = 500
+    max_age = 50
     height, width = 3, 5
-    name_pheomes = [x + y for x in 'abcdefghijklmnoprstuvwxyz' for y in 'aeiouy']
+    x, y = 1, 1
+    name_phenomes = [x + y for x in 'abcdefghijklmnoprstuvwxyz' for y in 'aeiouy']
 
     def __init__(self, parents=None, genome=None, coord=None):
         super().__init__(genome)
@@ -51,8 +57,6 @@ class Blique(Individual):
         self.name = self.gen_name()
         if coord:
             self.x, self.y = coord
-        else:
-            self.x, self.y = 1, 1
         self.alive = True
         self.age = 0
         self.distance_traveled = 0
@@ -60,13 +64,14 @@ class Blique(Individual):
         self.set_eye()
         self.set_image()
         self.initial_state = self.state()
+        self.brain = Brain(1, 2, 5, init=parents)
 
     def gen_name(self):
         name = ''
         if not self.parents:
             length = random.randint(2, 4)
             for i in range(length):
-                name += random.choice(self.name_pheomes)
+                name += random.choice(self.name_phenomes)
         else:
             p1, p2 = self.parents
             cut = random.randint(1, 2)
@@ -103,11 +108,11 @@ class Blique(Individual):
         if not self.env:
             raise Exception('Blique not in an environemnt')
         if self.facing == NORTH:
-            dx, dy = 0, 1
+            dx, dy = 0, -1
         elif self.facing == EAST:
             dx, dy = 1, 0
         elif self.facing == SOUTH:
-            dx, dy = 0, -1
+            dx, dy = 0, 1
         elif self.facing == WEST:
             dx, dy = -1, 0
         x, y = self.eye_x + dx, self.eye_y + dy
@@ -133,8 +138,11 @@ class Blique(Individual):
     def turn(self, direction):
         self.facing = (self.facing + direction) % 4
 
-    def get_next_move(self, input):
-        return self.move
+    def get_next_move(self, inp):
+        if random.choice([0, 1]):
+            return lambda: self.move(random.randint(1, self.max_move_distance))
+        else:
+            return lambda: self.turn(random.choice([LEFT, RIGHT]))
 
     def get_tiles_under(self):
         if not self.env:
@@ -153,14 +161,14 @@ class Blique(Individual):
         if self.age > self.max_age or any(not tile.passable for tile in self.get_tiles_under()):
             self.alive = False
         else:
-            self.age += 1
+            self.age += 0.2
 
     def read_genome(self):
         for i in range(0, self.genome_length, 8):
             gene = self.genome.subsequence(i, i+8)
 
     def fitness(self):
-        return self.distance_traveled * self.age
+        return int(self.distance_traveled * self.age)
 
     def load_state(self, state):
         self.alive, self.age, self.distance_traveled, _, coord = state
@@ -215,6 +223,7 @@ class Environment:
             addstr(self.stdscr, blique.x, y, line)
             y += 1
         addstr(self.stdscr, blique.eye_x, blique.eye_y, 'O')
+        addstr(self.stdscr, blique.x, blique.y + blique.height, blique.name)
         self.stdscr.refresh()
 
     def undraw_blique(self, blique):
@@ -224,13 +233,14 @@ class Environment:
                 if y * self.width + x < len(self.grid):
                     char = str(self.grid[y * self.width + x])
                     addstr(self.stdscr, x, y, char)
+        addstr(self.stdscr, blique.x, blique.y + blique.height, ' ' * len(blique.name))
         self.stdscr.refresh()
 
     def update_info(self):
         fittest = self.bliques.get_fittest()
         name, parents = fittest.bio()
         alive, age, distance, fitness, coord = fittest.state()
-        info = 'fittest: {}, child of {}, lived for {} and traveled {}'.format(name, parents, age, distance)
+        info = 'fittest: {}, child of {}, lived for {} and traveled {}'.format(name, parents, int(age), distance)
         fitness = 'fitness: ' + str(fitness)
         addstr(self.stdscr, 0, self.height-2, ' ' * self.width)
         addstr(self.stdscr, 0, self.height-1, ' ' * self.width)
@@ -262,7 +272,7 @@ class Environment:
                             self.draw_blique(b, color=curses.color_pair(2))
                         else:
                             self.draw_blique(b)
-            time.sleep(0.1)
+            time.sleep(0.3)
         for b in self.bliques:
             b.reset()
 
@@ -273,6 +283,43 @@ class Environment:
                 grid += str(self.grid[y * self.width + x])
             grid += '\n'
         return grid
+
+class Brain:
+    """Basic neural network"""
+    def __init__(self, num_in, num_out, conv_size, init=False):
+        self.num_in = num_in
+        self.num_out = num_out
+        self.conv_size = conv_size
+        if init:
+            self.set_layer1_weights([[random.uniform(-1, 1) for _ in range(conv_size)] for _ in range(num_in)])
+            self.set_layer2_weights([[random.uniform(-1, 1) for _ in range(num_out)] for _ in range(conv_size)])
+
+    def process(self, *inputs):
+        assert(len(inputs) == self.num_in)
+        self.inputs = inputs
+        self.conv_layer = self.convolve(self.inputs, self.layer1)
+        self.output = self.convolve(self.conv_layer, self.layer2)
+        self.output = [round(x) for x in self.output]
+        return self.output
+
+    def convolve(self, inputs, weight_set):
+        output_layer = [0 for _ in range(len(weight_set[0]))]
+        for i, weights in zip(inputs, weight_set):
+            for dst, w in enumerate(weights):
+                output_layer[dst] = sigmoid(w * i)
+        return output_layer
+
+    def set_layer1_weights(self, weights):
+        """sets the edge weights for layer 1 of the network, where WEIGHTS is an iterable
+        of size SELF.NUM_IN of lists of size SELF.CONVOL_SIZE of weights for a
+        single input."""
+        self.layer1 = weights
+
+    def set_layer2_weights(self, weights):
+        """sets the edge weights for layer 2 of the network, where WEIGHTS is an iterable
+        of size SELF.CONVOL_SIZE of lists of size SELF.NUM_OUT of weights
+        for a single colnvolution layer node."""
+        self.layer2 = weights
 
 class Tile:
     """A square in the environment that can be passable or not and looks like S in string form"""
