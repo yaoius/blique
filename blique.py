@@ -9,6 +9,7 @@ NORTH = 0
 EAST = 1
 SOUTH = 2
 WEST = 3
+
 LEFT = -1
 RIGHT = 1
 
@@ -17,7 +18,7 @@ ANIMATION_SPEED = 0.1
 def sigmoid(x):
   return 1 / (1 + math.exp(-x))
 
-def addstr(stdscr, x, _y, s, color=None):
+def addstr(stdscr, x, y, s, color=None):
     try:
         if color:
             stdscr.addstr(y, x, s)
@@ -34,7 +35,7 @@ def main(stdscr):
     Blique.x = width // 2
     Blique.y = height // 2
     g = GeneticAlg()
-    bliques = Population(size=10, member=Blique, initialize=True)
+    bliques = Population(size=5, member=Blique, initialize=True)
     for i, gen in enumerate(g.stepper(bliques, elitism=False)):
         environment = Environment(height, width, gen, stdscr)
         environment.update()
@@ -65,6 +66,7 @@ class Blique(Individual):
         self.set_eye()
         self.set_image()
         self.initial_state = self.state()
+        self.brain = Brain(1, 2, 5, init=parents)
 
     def gen_name(self):
         name = ''
@@ -164,16 +166,15 @@ class Blique(Individual):
             self.age += ANIMATION_SPEED
 
     def read_genome(self):
-        pass
-        # self.brain = Brain(1, 2, 5)
-        # genes = [self.read_gene(self.genome.subsequence(i, i+8)) for i in range(0, self.genome_length, 8)]
-        # self.brain.set_layer1_weights([genes[:5]])
-        # self.brain.set_layer2_weights([genes[5:7], genes[7:9], genes[9:11], genes[11:13], genes[13:]])
+        self.brain = Brain(1, 2, 5)
+        genes = [self.read_gene(self.genome.subsequence(i, i+8)) for i in range(0, self.genome_length, 8)]
+        self.brain.set_layer1_weights([genes[:5]])
+        self.brain.set_layer2_weights([genes[5:7], genes[7:9], genes[9:11], genes[11:13], genes[13:]])
 
     def read_gene(self, gene):
         weight = 1
         for i in gene:
-            weight << 1
+            weight = weight << 1
             weight + i
         return sigmoid(weight)
 
@@ -276,12 +277,13 @@ class Environment:
                 if animate:
                     self.undraw_blique(b)
                 b.step()
-                if animate and b.alive:
-                    self.update_info()
-                    if b is self.bliques.get_fittest():
-                        self.draw_blique(b, color=curses.color_pair(2))
-                    else:
-                        self.draw_blique(b)
+                if b.alive:
+                    if animate:
+                        self.update_info()
+                        if b is self.bliques.get_fittest():
+                            self.draw_blique(b, color=curses.color_pair(2))
+                        else:
+                            self.draw_blique(b)
                 else:
                     to_draw.remove(b)
             time.sleep(ANIMATION_SPEED)
