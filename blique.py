@@ -9,17 +9,18 @@ NORTH = 0
 EAST = 1
 SOUTH = 2
 WEST = 3
-
 LEFT = -1
 RIGHT = 1
+
+ANIMATION_SPEED = 0.1
 
 def sigmoid(x):
   return 1 / (1 + math.exp(-x))
 
-def addstr(stdscr, x, y, s, color=None):
+def addstr(stdscr, x, _y, s, color=None):
     try:
         if color:
-            stdscr.addstr(y, x, s, color)
+            stdscr.addstr(y, x, s)
         else:
             stdscr.addstr(y, x, s)
     except:
@@ -33,14 +34,14 @@ def main(stdscr):
     Blique.x = width // 2
     Blique.y = height // 2
     g = GeneticAlg()
-    bliques = Population(size=5, member=Blique, initialize=True)
-    for i, gen in enumerate(g.stepper(bliques)):
+    bliques = Population(size=10, member=Blique, initialize=True)
+    for i, gen in enumerate(g.stepper(bliques, elitism=False)):
         environment = Environment(height, width, gen, stdscr)
         environment.update()
         environment.simulate(True)
-        key = stdscr.getkey()
-        if str(key) == 'q':
-            break
+        # key = stdscr.getkey()
+        # if str(key) == 'q':
+        #     break
 
 class Blique(Individual):
 
@@ -64,7 +65,6 @@ class Blique(Individual):
         self.set_eye()
         self.set_image()
         self.initial_state = self.state()
-        self.brain = Brain(1, 2, 5, init=parents)
 
     def gen_name(self):
         name = ''
@@ -161,11 +161,21 @@ class Blique(Individual):
         if self.age > self.max_age or any(not tile.passable for tile in self.get_tiles_under()):
             self.alive = False
         else:
-            self.age += 0.2
+            self.age += ANIMATION_SPEED
 
     def read_genome(self):
-        for i in range(0, self.genome_length, 8):
-            gene = self.genome.subsequence(i, i+8)
+        pass
+        # self.brain = Brain(1, 2, 5)
+        # genes = [self.read_gene(self.genome.subsequence(i, i+8)) for i in range(0, self.genome_length, 8)]
+        # self.brain.set_layer1_weights([genes[:5]])
+        # self.brain.set_layer2_weights([genes[5:7], genes[7:9], genes[9:11], genes[11:13], genes[13:]])
+
+    def read_gene(self, gene):
+        weight = 1
+        for i in gene:
+            weight << 1
+            weight + i
+        return sigmoid(weight)
 
     def fitness(self):
         return int(self.distance_traveled * self.age)
@@ -260,19 +270,21 @@ class Environment:
             self.draw_blique(blique)
 
     def simulate(self, animate=False):
-        while any(b.alive for b in self.bliques):
-            for b in self.bliques:
-                if b.alive:
-                    if animate:
-                        self.undraw_blique(b)
-                    b.step()
-                    if animate:
-                        self.update_info()
-                        if b is self.bliques.get_fittest():
-                            self.draw_blique(b, color=curses.color_pair(2))
-                        else:
-                            self.draw_blique(b)
-            time.sleep(0.3)
+        to_draw = [b for b in self.bliques if b.alive]
+        while to_draw:
+            for b in to_draw:
+                if animate:
+                    self.undraw_blique(b)
+                b.step()
+                if animate and b.alive:
+                    self.update_info()
+                    if b is self.bliques.get_fittest():
+                        self.draw_blique(b, color=curses.color_pair(2))
+                    else:
+                        self.draw_blique(b)
+                else:
+                    to_draw.remove(b)
+            time.sleep(ANIMATION_SPEED)
         for b in self.bliques:
             b.reset()
 
@@ -306,19 +318,23 @@ class Brain:
         output_layer = [0 for _ in range(len(weight_set[0]))]
         for i, weights in zip(inputs, weight_set):
             for dst, w in enumerate(weights):
-                output_layer[dst] = sigmoid(w * i)
-        return output_layer
+                output_layer[dst] += w * i
+        return [sigmoid(x) for x in output_layer]
 
     def set_layer1_weights(self, weights):
         """sets the edge weights for layer 1 of the network, where WEIGHTS is an iterable
         of size SELF.NUM_IN of lists of size SELF.CONVOL_SIZE of weights for a
         single input."""
+        # assert(len(weights) == self.num_in)
+        # assert(all(len(w) == self.conv_size for w in weights))
         self.layer1 = weights
 
     def set_layer2_weights(self, weights):
         """sets the edge weights for layer 2 of the network, where WEIGHTS is an iterable
         of size SELF.CONVOL_SIZE of lists of size SELF.NUM_OUT of weights
         for a single colnvolution layer node."""
+        # assert(len(weights) == self.conv_size)
+        # assert(all(len(w) == self.num_out for w in weights))
         self.layer2 = weights
 
 class Tile:
