@@ -3,7 +3,7 @@ import time
 
 class GeneticAlg:
 
-    max_iter = 250
+    max_iter = 5000
 
     def __init__(self, max_iter=max_iter):
         self.max_iter = max_iter
