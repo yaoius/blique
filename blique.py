@@ -13,7 +13,7 @@ WEST = 3
 LEFT = -1
 RIGHT = 1
 
-ANIMATION_SPEED = 0.05
+ANIMATION_SPEED = 0.01
 
 def sigmoid(x):
   return 1 / (1 + math.exp(-x))
@@ -28,6 +28,7 @@ def addstr(stdscr, x, y, s, color=None):
         pass
 
 def main(stdscr):
+    Genome.deletion_rate = 0
     curses.start_color()
     if not curses.has_colors():
         raise Exception('NO COLOR')
@@ -35,11 +36,14 @@ def main(stdscr):
     Blique.x = width // 2
     Blique.y = height // 2
     g = GeneticAlg()
-    bliques = Population(size=5, member=Blique, initialize=True)
-    for i, gen in enumerate(g.stepper(bliques, elitism=True)):
+    bliques = Population(size=20, member=Blique, initialize=True)
+    for i, gen in enumerate(g.stepper(bliques, elitism=False)):
         environment = Environment(height, width, gen, stdscr)
-        environment.update()
-        environment.simulate(True)
+        if i % 10 == 0:
+            environment.update()
+            environment.simulate(True)
+        else:
+            environment.simulate(False)
         # key = stdscr.getkey()
         # if str(key) == 'q':
         #     break
@@ -48,7 +52,7 @@ class Blique(Individual):
 
     genome_length = 75
     max_move_distance = 3
-    max_age = 20
+    max_age = 30
     height, width = 3, 5
     x, y = 1, 1
     name_phenomes = [x + y for x in 'abcdefghijklmnoprstuvwxyz' for y in 'aeiouy']
@@ -120,7 +124,7 @@ class Blique(Individual):
         tile = self.env.get_tile(x, y)
         dist = 0
         while tile.passable:
-            dist += .1
+            dist += 1
             x, y = x + dx, y + dy
             tile = self.env.get_tile(x, y)
         return dist
@@ -163,13 +167,13 @@ class Blique(Individual):
         if self.age > self.max_age or any(not tile.passable for tile in self.get_tiles_under()):
             self.alive = False
         else:
-            self.age += ANIMATION_SPEED
+            self.age += ANIMATION_SPEED * 4
 
     def read_genome(self):
         self.brain = Brain(1, 4, 5)
         genes = [self.read_gene(self.genome.subsequence(i, i+3)) for i in range(0, self.genome_length, 3)]
         self.brain.set_layer1_weights([genes[:5]])
-        self.brain.set_layer2_weights([genes[5:9], genes[9:13], genes[13:17], genes[17:21], genes[21:]])
+        self.brain.set_layer2_weights([genes[5:9], genes[9:13], genes[13:17], genes[17:21], genes[21:25]])
 
     def read_gene(self, gene):
         weight = 1
@@ -181,7 +185,7 @@ class Blique(Individual):
         return weight
 
     def fitness(self):
-        return int(self.distance_traveled*10 + self.age)
+        return int(self.distance_traveled*5 + self.age)
 
     def load_state(self, state):
         self.alive, self.age, self.distance_traveled, _, coord = state
@@ -273,7 +277,12 @@ class Environment:
             self.draw_blique(blique)
 
     def simulate(self, animate=False):
+        for b in self.bliques:
+            b.reset()
         to_draw = [b for b in self.bliques if b.alive]
+        if not animate:
+            addstr(self.stdscr, (self.width - len('SIMULATING')) // 2, self.height // 2, 'SIMULATING')
+            self.stdscr.refresh()
         while to_draw:
             for b in to_draw:
                 if animate:
@@ -288,9 +297,8 @@ class Environment:
                             self.draw_blique(b)
                 else:
                     to_draw.remove(b)
-            time.sleep(ANIMATION_SPEED)
-        for b in self.bliques:
-            b.reset()
+            if animate:
+                time.sleep(ANIMATION_SPEED)
 
     def str_rep(self):
         grid = ''
@@ -323,7 +331,7 @@ class Brain:
         for i, weights in zip(inputs, weight_set):
             for dst, w in enumerate(weights):
                 output_layer[dst] += w * i
-        return [sigmoid(x) for x in output_layer]
+        return [sigmoid(x / 100) for x in output_layer]
 
     def set_layer1_weights(self, weights):
         """sets the edge weights for layer 1 of the network, where WEIGHTS is an iterable
