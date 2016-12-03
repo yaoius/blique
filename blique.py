@@ -13,7 +13,7 @@ WEST = 3
 LEFT = -1
 RIGHT = 1
 
-ANIMATION_SPEED = 0.1
+ANIMATION_SPEED = 0.05
 
 def sigmoid(x):
   return 1 / (1 + math.exp(-x))
@@ -36,7 +36,7 @@ def main(stdscr):
     Blique.y = height // 2
     g = GeneticAlg()
     bliques = Population(size=5, member=Blique, initialize=True)
-    for i, gen in enumerate(g.stepper(bliques, elitism=False)):
+    for i, gen in enumerate(g.stepper(bliques, elitism=True)):
         environment = Environment(height, width, gen, stdscr)
         environment.update()
         environment.simulate(True)
@@ -46,9 +46,9 @@ def main(stdscr):
 
 class Blique(Individual):
 
-    genome_length = 24
+    genome_length = 75
     max_move_distance = 3
-    max_age = 50
+    max_age = 20
     height, width = 3, 5
     x, y = 1, 1
     name_phenomes = [x + y for x in 'abcdefghijklmnoprstuvwxyz' for y in 'aeiouy']
@@ -66,7 +66,6 @@ class Blique(Individual):
         self.set_eye()
         self.set_image()
         self.initial_state = self.state()
-        self.brain = Brain(1, 2, 5, init=parents)
 
     def gen_name(self):
         name = ''
@@ -121,7 +120,7 @@ class Blique(Individual):
         tile = self.env.get_tile(x, y)
         dist = 0
         while tile.passable:
-            dist += 1
+            dist += .1
             x, y = x + dx, y + dy
             tile = self.env.get_tile(x, y)
         return dist
@@ -141,10 +140,11 @@ class Blique(Individual):
         self.facing = (self.facing + direction) % 4
 
     def get_next_move(self, inp):
-        if random.choice([0, 1]):
-            return lambda: self.move(random.randint(1, self.max_move_distance))
+        turn, turn_dir, m1, m2 = self.brain.process(inp)
+        if turn:
+            return lambda: self.turn(1 if turn_dir else -1)
         else:
-            return lambda: self.turn(random.choice([LEFT, RIGHT]))
+            return lambda: self.move(m1 << 1 + m2)
 
     def get_tiles_under(self):
         if not self.env:
@@ -166,20 +166,22 @@ class Blique(Individual):
             self.age += ANIMATION_SPEED
 
     def read_genome(self):
-        self.brain = Brain(1, 2, 5)
-        genes = [self.read_gene(self.genome.subsequence(i, i+8)) for i in range(0, self.genome_length, 8)]
+        self.brain = Brain(1, 4, 5)
+        genes = [self.read_gene(self.genome.subsequence(i, i+3)) for i in range(0, self.genome_length, 3)]
         self.brain.set_layer1_weights([genes[:5]])
-        self.brain.set_layer2_weights([genes[5:7], genes[7:9], genes[9:11], genes[11:13], genes[13:]])
+        self.brain.set_layer2_weights([genes[5:9], genes[9:13], genes[13:17], genes[17:21], genes[21:]])
 
     def read_gene(self, gene):
         weight = 1
-        for i in gene:
+        for i in gene[:-1]:
             weight = weight << 1
-            weight + i
-        return sigmoid(weight)
+            weight += i
+        if gene[-1]:
+            weight = -weight
+        return weight
 
     def fitness(self):
-        return int(self.distance_traveled * self.age)
+        return int(self.distance_traveled*10 + self.age)
 
     def load_state(self, state):
         self.alive, self.age, self.distance_traveled, _, coord = state
@@ -327,16 +329,16 @@ class Brain:
         """sets the edge weights for layer 1 of the network, where WEIGHTS is an iterable
         of size SELF.NUM_IN of lists of size SELF.CONVOL_SIZE of weights for a
         single input."""
-        # assert(len(weights) == self.num_in)
-        # assert(all(len(w) == self.conv_size for w in weights))
+        assert(len(weights) == self.num_in)
+        assert(all(len(w) == self.conv_size for w in weights))
         self.layer1 = weights
 
     def set_layer2_weights(self, weights):
         """sets the edge weights for layer 2 of the network, where WEIGHTS is an iterable
         of size SELF.CONVOL_SIZE of lists of size SELF.NUM_OUT of weights
         for a single colnvolution layer node."""
-        # assert(len(weights) == self.conv_size)
-        # assert(all(len(w) == self.num_out for w in weights))
+        assert(len(weights) == self.conv_size)
+        assert(all(len(w) == self.num_out for w in weights))
         self.layer2 = weights
 
 class Tile:
