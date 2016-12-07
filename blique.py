@@ -122,11 +122,11 @@ class Blique(Individual):
             dx, dy = -1, 0
         x, y = self.eye_x + dx, self.eye_y + dy
         tile = self.env.get_tile(x, y)
-        dist = 0
+        dist = 1
         while tile.passable:
-            dist += 1
             x, y = x + dx, y + dy
             tile = self.env.get_tile(x, y)
+            dist += 1
         return dist
 
     def move(self, amt=1):
