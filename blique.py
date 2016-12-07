@@ -33,8 +33,8 @@ def main(stdscr):
     if not curses.has_colors():
         raise Exception('NO COLOR')
     height, width = curses.LINES, curses.COLS
-    Blique.x = width // 2
-    Blique.y = height // 2
+    Blique.x = width // 2 - Blique.width
+    Blique.y = height // 2 - Blique.height
     g = GeneticAlg()
     bliques = Population(size=20, member=Blique, initialize=True)
     for i, gen in enumerate(g.stepper(bliques, elitism=False)):

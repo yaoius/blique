@@ -1,0 +1,2 @@
+#Blique
+This is a simple application of a genetic neural network using small creatures called Bliques. Bliques evolve to learn to avoid walls as long as possible over many iterations, each iteration selecting for a better combonation of weights.

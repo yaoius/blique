@@ -1,5 +1,4 @@
 import random
-from bitarray import bitarray
 
 class Genome:
 
@@ -12,7 +11,7 @@ class Genome:
         if sequence:
             self.sequence = sequence
         else:
-            self.sequence = bitarray(endian='big')
+            self.sequence = list()
             self.sequence.extend([random.choice([1, 0]) for _ in range(genome_length)])
         self.length = genome_length
         self.mutation_rates =   {
@@ -22,7 +21,7 @@ class Genome:
                                 }
 
     def crossover(self, other, mutation):
-        crossed = bitarray(endian='big')
+        crossed = list()
         seq1 = self.sequence[:]
         seq2 = other.sequence[:]
 
