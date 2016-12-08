@@ -255,9 +255,9 @@ class Environment:
 
     def get_tile(self, x, y):
         """Retrieves the Tile at coordinates (x, y) on the grid"""
-        if x < 0 or x >= self.view_width:
+        if x <= 0 or x >= self.view_width:
             return Wall()
-        if y < 0 or y >= self.view_height:
+        if y <= 0 or y >= self.view_height:
             return Wall()
         return self.grid[y * self.view_width + x]
 
@@ -298,9 +298,8 @@ class Environment:
             addstr(self.infobox, 1, row, info)
         self.infobox.refresh()
 
-    def update(self, bliques=None):
+    def update(self, bliques=[]):
         """Update the viewbox and infobox"""
-        bliques = bliques or self.bliques
         self.viewbox.clear()
         for x in range(self.view_width):
             for y in range(self.view_height):
@@ -320,6 +319,7 @@ class Environment:
             b.reset()
         to_draw = [b for b in self.bliques if b.alive]
         if not animate:
+            self.update()
             addstr(self.viewbox, (self.view_width - len('SIMULATING')) // 2, self.view_height // 2, 'SIMULATING')
             self.viewbox.refresh()
         while to_draw:
