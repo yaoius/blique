@@ -13,10 +13,10 @@ WEST = 3
 LEFT = -1
 RIGHT = 1
 
-ANIMATION_SPEED = 0.01
+ANIMATION_SPEED = 0.05
 
 def sigmoid(x):
-  return 1 / (1 + math.exp(-x))
+    return 1 / (1 + math.exp(-x))
 
 def addstr(stdscr, x, y, s, color=None):
     try:
@@ -33,12 +33,12 @@ def main(stdscr):
     if not curses.has_colors():
         raise Exception('NO COLOR')
     height, width = curses.LINES, curses.COLS
-    Blique.x = width // 2 - Blique.width
-    Blique.y = height // 2 - Blique.height
+    Blique.x = (3 * height - Blique.width) // 2
+    Blique.y = (height - Blique.height) // 2
     g = GeneticAlg()
-    bliques = Population(size=20, member=Blique, initialize=True)
+    bliques = Population(size=15, member=Blique, initialize=True)
     for i, gen in enumerate(g.stepper(bliques, elitism=False)):
-        environment = Environment(height, width, gen, stdscr)
+        environment = Environment(height, width, gen)
         if i % 10 == 0:
             environment.update()
             environment.simulate(True)
@@ -166,7 +166,7 @@ class Blique(Individual):
         self.set_eye()
         if self.age > self.max_age or any(not tile.passable for tile in self.get_tiles_under()):
             self.alive = False
-        else:
+        if self.alive:
             self.age += ANIMATION_SPEED * 4
 
     def read_genome(self):
@@ -203,32 +203,38 @@ class Blique(Individual):
 
 class Environment:
 
-    def __init__(self, height, width, bliques, stdscr, grid=None):
+    def __init__(self, height, width, bliques, grid=None):
         self.width = width
         self.height = height
-        self.view_height = height - 2
+        self.view_height = height
+        self.view_width = 3 * height
+        self.view = curses.newwin(self.view_height, self.view_width, 0, 0)
+        self.info_box = curses.newwin(self.view_height, width - self.view_width, 0, self.view_width)
+        header = '{:<2} {:<5} {:<10} {:<3} {:<5}'.format('#', 'F', 'Name', 'Age', 'Distance')
+        delimeter = '-  -     ----       --- --------'
+        addstr(self.info_box, 1, 0, header)
+        addstr(self.info_box, 1, 1, delimeter)
         self.grid = grid or self.make_grid()
         self.bliques = bliques
         for ind in self.bliques:
             ind.env = self
-        self.stdscr = stdscr
 
     def make_grid(self):
-        grid = [None for _ in range(self.width * self.view_height)]
-        for x in range(self.width):
+        grid = [None for _ in range(self.view_width * self.view_height)]
+        for x in range(self.view_width):
             for y in range(self.view_height):
-                if 0 < x < self.width - 1 and 0 < y < self.view_height - 1:
-                    grid[y * self.width + x] = Tile()
+                if 0 < x < self.view_width - 1 and 0 < y < self.view_height - 1:
+                    grid[y * self.view_width + x] = Tile()
                 else:
-                    grid[y * self.width + x] = Wall()
+                    grid[y * self.view_width + x] = Wall()
         return grid
 
     def get_tile(self, x, y):
-        if x < 0 or x >= self.width:
+        if x < 0 or x >= self.view_width:
             return Wall()
         if y < 0 or y >= self.view_height:
             return Wall()
-        return self.grid[y * self.width + x]
+        return self.grid[y * self.view_width + x]
 
     def add_blique(self, blique):
         self.bliques.add_individual(blique)
@@ -237,41 +243,38 @@ class Environment:
     def draw_blique(self, blique, color=None):
         y = blique.y
         for line in blique.image:
-            addstr(self.stdscr, blique.x, y, line)
+            addstr(self.view, blique.x, y, line)
             y += 1
-        addstr(self.stdscr, blique.eye_x, blique.eye_y, 'O')
-        addstr(self.stdscr, blique.x, blique.y + blique.height, blique.name)
-        self.stdscr.refresh()
+        addstr(self.view, blique.eye_x, blique.eye_y, 'O')
+        addstr(self.view, blique.x, blique.y + blique.height, blique.name)
+        self.view.refresh()
 
     def undraw_blique(self, blique):
         for dy in range(blique.height):
             for dx in range(blique.width):
                 x, y = blique.x + dx, blique.y + dy
-                if y * self.width + x < len(self.grid):
-                    char = str(self.grid[y * self.width + x])
-                    addstr(self.stdscr, x, y, char)
-        addstr(self.stdscr, blique.x, blique.y + blique.height, ' ' * len(blique.name))
-        self.stdscr.refresh()
+                if y * self.view_width + x < len(self.grid):
+                    char = str(self.grid[y * self.view_width + x])
+                    addstr(self.view, x, y, char)
+        addstr(self.view, blique.x, blique.y + blique.height, ' ' * len(blique.name))
+        self.view.refresh()
 
     def update_info(self):
-        fittest = self.bliques.get_fittest()
-        name, parents = fittest.bio()
-        alive, age, distance, fitness, coord = fittest.state()
-        info = 'fittest: {}, child of {}, lived for {} and traveled {}'.format(name, parents, int(age), distance)
-        fitness = 'fitness: ' + str(fitness)
-        addstr(self.stdscr, 0, self.height-2, ' ' * self.width)
-        addstr(self.stdscr, 0, self.height-1, ' ' * self.width)
-        addstr(self.stdscr, 0, self.height-2, info, color=curses.COLOR_GREEN)
-        addstr(self.stdscr, 0, self.height-1, fitness)
-        self.stdscr.refresh()
+        offset = 2
+        sorted_bliques = sorted(self.bliques, key=lambda b: b.fitness(), reverse=True)
+        for i, blique in enumerate(sorted_bliques):
+            row = i + offset
+            info = '{:<2} {:<5} {:<10} {:<3} {:<4}'.format(i+1, blique.fitness(), blique.name, int(blique.age), int(blique.distance_traveled))
+            addstr(self.info_box, 1, row, info)
+        self.info_box.refresh()
 
     def update(self):
-        self.stdscr.clear()
-        for x in range(self.width):
+        self.view.clear()
+        for x in range(self.view_width):
             for y in range(self.view_height):
-                char = str(self.grid[y * self.width + x])
-                addstr(self.stdscr, x, y, char)
-        self.stdscr.refresh()
+                char = str(self.grid[y * self.view_width + x])
+                addstr(self.view, x, y, char)
+        self.view.refresh()
         self.update_info()
         for blique in self.bliques:
             self.draw_blique(blique)
@@ -281,8 +284,8 @@ class Environment:
             b.reset()
         to_draw = [b for b in self.bliques if b.alive]
         if not animate:
-            addstr(self.stdscr, (self.width - len('SIMULATING')) // 2, self.height // 2, 'SIMULATING')
-            self.stdscr.refresh()
+            addstr(self.view, (self.view_width - len('SIMULATING')) // 2, self.view_height // 2, 'SIMULATING')
+            self.view.refresh()
         while to_draw:
             for b in to_draw:
                 if animate:
@@ -290,21 +293,21 @@ class Environment:
                 b.step()
                 if b.alive:
                     if animate:
-                        self.update_info()
                         if b is self.bliques.get_fittest():
                             self.draw_blique(b, color=curses.color_pair(2))
                         else:
                             self.draw_blique(b)
                 else:
                     to_draw.remove(b)
+            self.update_info()
             if animate:
                 time.sleep(ANIMATION_SPEED)
 
     def str_rep(self):
         grid = ''
         for y in range(self.view_height):
-            for x in range(self.width):
-                grid += str(self.grid[y * self.width + x])
+            for x in range(self.view_width):
+                grid += str(self.grid[y * self.view_width + x])
             grid += '\n'
         return grid
 
