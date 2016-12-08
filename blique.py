@@ -5,6 +5,9 @@ import time
 import curses
 import math
 
+__author__ = 'Dillon Yao'
+VERSION, BUILD = 0, 2
+
 NORTH = 0
 EAST = 1
 SOUTH = 2
@@ -14,7 +17,7 @@ LEFT = -1
 RIGHT = 1
 
 ANIMATION_SPEED = 0.05
-STEP = 2
+STEP = 5
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
@@ -214,14 +217,16 @@ class Blique(Individual):
         return self.alive, self.age, self.distance_traveled, self.fitness(), (self.x, self.y)
 
 class Environment:
-    """Handles the animation of and evolution of a population of bliques"""
+    """Handles the display, animation, and evolution of a population of bliques"""
+    infobox_width = 35
+    title = 'Blique Evolution Sim v {}.{}'.format(VERSION, BUILD)
 
     def __init__(self, height, width, bliques, grid=None):
         self.width = width
         self.height = height
         self.generation = 0
         self.view_height = height
-        self.view_width = 3 * height
+        self.view_width = width - self.infobox_width
         self.grid = grid or self.make_grid()
         self.initialize_windows()
         self.bliques = bliques
@@ -229,19 +234,19 @@ class Environment:
             blique.env = self
 
     def initialize_windows(self):
-        """initializes the viewbox and info_box for the Environment"""
-        self.view = curses.newwin(self.view_height, self.view_width, 0, 0)
-        self.info_box = curses.newwin(self.view_height, self.width - self.view_width, 0, self.view_width)
+        """initializes the viewbox and infobox for the Environment"""
+        self.viewbox = curses.newwin(self.view_height, self.view_width, 0, 0)
+        self.infobox = curses.newwin(self.view_height, self.infobox_width, 0, self.view_width)
         self.init_infobox()
 
     def init_infobox(self):
-        """initializes the column headers for the info_box"""
-        self.info_box.border()
+        """initializes the column headers for the infobox"""
+        self.infobox.border()
         header = '{:<2} {:<5} {:<10} {:<3} {:<5}'.format('#', 'F', 'Name', 'Age', 'Distance')
         delimeter = '-  -     ----       --- --------'
-        addstr(self.info_box, 1, 1, header)
-        addstr(self.info_box, 1, 2, delimeter)
-        self.info_box.refresh()
+        addstr(self.infobox, 1, 1, header)
+        addstr(self.infobox, 1, 2, delimeter)
+        self.infobox.refresh()
 
     def make_grid(self):
         """Generates an empty grid of all Tiles"""
@@ -261,15 +266,14 @@ class Environment:
         self.bliques.add_individual(blique)
         blique.env = self
 
-    def draw_blique(self, blique, color=None):
+    def add_blique_to_viewbox(self, blique, color=None):
         """Draws a blique b at the coordinates (b.x, b.y)"""
         y = blique.y
         for line in blique.image:
-            addstr(self.view, blique.x, y, line)
+            addstr(self.viewbox, blique.x, y, line)
             y += 1
-        addstr(self.view, blique.eye_x, blique.eye_y, 'O')
-        addstr(self.view, blique.x, blique.y + blique.height, blique.name)
-        self.view.refresh()
+        addstr(self.viewbox, blique.eye_x, blique.eye_y, 'O')
+        addstr(self.viewbox, blique.x, blique.y + blique.height, blique.name)
 
     def undraw_blique(self, blique):
         """Removes the blique b from it's coordinates"""
@@ -278,35 +282,36 @@ class Environment:
                 x, y = blique.x + dx, blique.y + dy
                 if y * self.view_width + x < len(self.grid):
                     char = str(self.grid[y * self.view_width + x])
-                    addstr(self.view, x, y, char)
-        addstr(self.view, blique.x, blique.y + blique.height, ' ' * len(blique.name))
-        self.view.refresh()
+                    addstr(self.viewbox, x, y, char)
+        addstr(self.viewbox, blique.x, blique.y + blique.height, ' ' * len(blique.name))
+        self.viewbox.refresh()
 
     def update_info(self):
-        """Updates the info_box with the bliques currently in the population, sorted by
+        """Updates the infobox with the bliques currently in the population, sorted by
         their fitness values"""
         offset = 3
         sorted_bliques = sorted(self.bliques, key=lambda b: b.fitness(), reverse=True)
-        addstr(self.info_box, 1, 0, 'Generation: {}'.format(self.generation))
+        addstr(self.infobox, 1, 0, 'Generation: {}'.format(self.generation))
         for i, blique in enumerate(sorted_bliques):
             row = i + offset
             info = '{:<2} {:<5} {:<10} {:<3} {:<4}'.format(i+1, blique.fitness(), blique.name, int(blique.age), int(blique.distance_traveled))
-            addstr(self.info_box, 1, row, info)
-        self.info_box.refresh()
+            addstr(self.infobox, 1, row, info)
+        self.infobox.refresh()
 
     def update(self, bliques=None):
-        """Update the viewbox and info_box"""
+        """Update the viewbox and infobox"""
         bliques = bliques or self.bliques
-        self.view.clear()
+        self.viewbox.clear()
         for x in range(self.view_width):
             for y in range(self.view_height):
                 char = str(self.grid[y * self.view_width + x])
-                addstr(self.view, x, y, char)
-        self.view.border()
-        self.view.refresh()
+                addstr(self.viewbox, x, y, char)
+        self.viewbox.border()
+        addstr(self.viewbox, 1, 0, self.title)
         self.update_info()
         for b in bliques:
-            self.draw_blique(b)
+            self.add_blique_to_viewbox(b)
+        self.viewbox.refresh()
 
     def simulate(self, animate=False):
         """Simulate the bliques actions until all bliques are dead, drawing to the viewbox
@@ -315,9 +320,8 @@ class Environment:
             b.reset()
         to_draw = [b for b in self.bliques if b.alive]
         if not animate:
-            addstr(self.view, (self.view_width - len('SIMULATING')) // 2, self.view_height // 2, 'SIMULATING')
-            self.view.border()
-            self.view.refresh()
+            addstr(self.viewbox, (self.view_width - len('SIMULATING')) // 2, self.view_height // 2, 'SIMULATING')
+            self.viewbox.refresh()
         while to_draw:
             for b in to_draw:
                 b.step()
