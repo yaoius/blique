@@ -14,6 +14,7 @@ LEFT = -1
 RIGHT = 1
 
 ANIMATION_SPEED = 0.05
+STEP = 2
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
@@ -33,19 +34,20 @@ def main(stdscr):
     if not curses.has_colors():
         raise Exception('NO COLOR')
     height, width = curses.LINES, curses.COLS
+
     Blique.x = (3 * height - Blique.width) // 2
     Blique.y = (height - Blique.height) // 2
+
     bliques = Population(size=15, member=Blique, initialize=True)
-    for i, gen in enumerate(ga.stepper(bliques, elitism=False)):
-        environment = Environment(height, width, gen)
-        if i % 10 == 0:
-            environment.update()
-            environment.simulate(True)
+    env = Environment(height, width, bliques)
+
+    while True:
+        if env.generation % STEP == 0:
+            env.update()
+            env.simulate(True)
         else:
-            environment.simulate(False)
-        # key = stdscr.getkey()
-        # if str(key) == 'q':
-        #     break
+            env.simulate(False)
+        env.evolve_pop()
 
 class Blique(Individual):
 
@@ -71,6 +73,8 @@ class Blique(Individual):
         self.initial_state = self.state()
 
     def gen_name(self):
+        """Generates a name for the Blique based on either the parents name, or if it
+        has no parents, creates a random one from the available phenomes"""
         name = ''
         if not self.parents:
             length = random.randint(2, 4)
@@ -84,6 +88,7 @@ class Blique(Individual):
         return name.capitalize()
 
     def set_eye(self):
+        """Determines the coordinates of the blique's eye"""
         if self.facing == NORTH:
             self.eye_x = self.x + self.width // 2
             self.eye_y = self.y
@@ -98,17 +103,20 @@ class Blique(Individual):
             self.eye_y = self.y + self.height // 2
 
     def set_image(self):
+        """sets the blique's appearance when rendered"""
         self.image = ['+' + '-' * (self.width - 2) + '+']
         for i in range(self.height - 2):
             self.image.append('|' + ' ' * (self.width - 2) + '|')
         self.image.append('+' + '-' * (self.width - 2) + '+')
 
     def mate(self, other, mutation):
+        """Returns a new Blique with a genome crossed with that of another Blique"""
         crossed_genome = Genome.crossover(self.genome, other.genome, mutation)
         child = Blique(genome=crossed_genome, parents=(self.name, other.name))
         return child
 
     def look_ahead(self):
+        """Blique finds distance form eye to wall"""
         if not self.env:
             raise Exception('Blique not in an environemnt')
         if self.facing == NORTH:
@@ -129,6 +137,7 @@ class Blique(Individual):
         return dist
 
     def move(self, amt=1):
+        """Moves the Blique in the directino that it is facing by AMT tiles"""
         if self.facing == NORTH:
             self.y -= amt
         elif self.facing == EAST:
@@ -140,10 +149,14 @@ class Blique(Individual):
         self.distance_traveled += amt
 
     def turn(self, direction):
+        """Turns the Blique 90deg clockwise DIRECTINON times. Using -1 turns the blique
+        left and 1 turns the blique right."""
         self.facing = (self.facing + direction) % 4
 
-    def get_next_move(self, inp):
-        turn, turn_dir, m1, m2 = self.brain.process(inp)
+    def get_next_move(self, *inp):
+        """Takes the input of the blique and processes through the Bliques brain, using the
+        inputs from INP"""
+        turn, turn_dir, m1, m2 = self.brain.process(*inp)
         if turn:
             return lambda: self.turn(1 if turn_dir else -1)
         else:
@@ -201,35 +214,42 @@ class Blique(Individual):
         return self.alive, self.age, self.distance_traveled, self.fitness(), (self.x, self.y)
 
 class Environment:
+    """Handles the animation of and evolution of a population of bliques"""
 
     def __init__(self, height, width, bliques, grid=None):
         self.width = width
         self.height = height
+        self.generation = 0
         self.view_height = height
         self.view_width = 3 * height
+        self.grid = grid or self.make_grid()
+        self.initialize_windows()
+        self.bliques = bliques
+        for blique in self.bliques:
+            blique.env = self
+
+    def initialize_windows(self):
+        """initializes the viewbox and info_box for the Environment"""
         self.view = curses.newwin(self.view_height, self.view_width, 0, 0)
-        self.info_box = curses.newwin(self.view_height, width - self.view_width, 0, self.view_width)
+        self.info_box = curses.newwin(self.view_height, self.width - self.view_width, 0, self.view_width)
+        self.init_infobox()
+
+    def init_infobox(self):
+        """initializes the column headers for the info_box"""
         self.info_box.border()
         header = '{:<2} {:<5} {:<10} {:<3} {:<5}'.format('#', 'F', 'Name', 'Age', 'Distance')
         delimeter = '-  -     ----       --- --------'
         addstr(self.info_box, 1, 1, header)
         addstr(self.info_box, 1, 2, delimeter)
-        self.grid = grid or self.make_grid()
-        self.bliques = bliques
-        for ind in self.bliques:
-            ind.env = self
+        self.info_box.refresh()
 
     def make_grid(self):
-        grid = [None for _ in range(self.view_width * self.view_height)]
-        for x in range(self.view_width):
-            for y in range(self.view_height):
-                if 0 <= x < self.view_width and 0 <= y < self.view_height:
-                    grid[y * self.view_width + x] = Tile()
-                else:
-                    grid[y * self.view_width + x] = Wall()
+        """Generates an empty grid of all Tiles"""
+        grid = [Tile() for _ in range(self.view_width * self.view_height)]
         return grid
 
     def get_tile(self, x, y):
+        """Retrieves the Tile at coordinates (x, y) on the grid"""
         if x < 0 or x >= self.view_width:
             return Wall()
         if y < 0 or y >= self.view_height:
@@ -237,10 +257,12 @@ class Environment:
         return self.grid[y * self.view_width + x]
 
     def add_blique(self, blique):
+        """Add a new blique to the population"""
         self.bliques.add_individual(blique)
         blique.env = self
 
     def draw_blique(self, blique, color=None):
+        """Draws a blique b at the coordinates (b.x, b.y)"""
         y = blique.y
         for line in blique.image:
             addstr(self.view, blique.x, y, line)
@@ -250,6 +272,7 @@ class Environment:
         self.view.refresh()
 
     def undraw_blique(self, blique):
+        """Removes the blique b from it's coordinates"""
         for dy in range(blique.height):
             for dx in range(blique.width):
                 x, y = blique.x + dx, blique.y + dy
@@ -260,8 +283,11 @@ class Environment:
         self.view.refresh()
 
     def update_info(self):
+        """Updates the info_box with the bliques currently in the population, sorted by
+        their fitness values"""
         offset = 3
         sorted_bliques = sorted(self.bliques, key=lambda b: b.fitness(), reverse=True)
+        addstr(self.info_box, 1, 0, 'Generation: {}'.format(self.generation))
         for i, blique in enumerate(sorted_bliques):
             row = i + offset
             info = '{:<2} {:<5} {:<10} {:<3} {:<4}'.format(i+1, blique.fitness(), blique.name, int(blique.age), int(blique.distance_traveled))
@@ -269,6 +295,7 @@ class Environment:
         self.info_box.refresh()
 
     def update(self, bliques=None):
+        """Update the viewbox and info_box"""
         bliques = bliques or self.bliques
         self.view.clear()
         for x in range(self.view_width):
@@ -282,6 +309,8 @@ class Environment:
             self.draw_blique(b)
 
     def simulate(self, animate=False):
+        """Simulate the bliques actions until all bliques are dead, drawing to the viewbox
+        if ANIMATE"""
         for b in self.bliques:
             b.reset()
         to_draw = [b for b in self.bliques if b.alive]
@@ -299,9 +328,15 @@ class Environment:
                 time.sleep(ANIMATION_SPEED)
             self.update_info()
 
-        
+    def evolve_pop(self):
+        """Evolves the population by a generation"""
+        self.bliques = ga.step(self.bliques)
+        for blique in self.bliques:
+            blique.env = self
+        self.generation += 1
 
     def str_rep(self):
+        """A string representation of the current grid"""
         grid = ''
         for y in range(self.view_height):
             for x in range(self.view_width):
@@ -365,10 +400,24 @@ class Tile:
     def __str__(self):
         return self.representation
 
+    def __int__(self):
+        return 1
+
 class Wall(Tile):
     """An inpassable tile"""
     def __init__(self):
         super().__init__(False, '█')
+
+    def __int__(self):
+        return 2
+
+class Food(Tile):
+    """A tile which gives a Blique energy"""
+    def __init__(self):
+        super().__init__(s='+')
+
+    def __int__(self):
+        return 3
 
 if __name__ == '__main__':
     curses.wrapper(main)
