@@ -1,4 +1,4 @@
-from genalg.alg import GeneticAlg
+import genalg.alg as ga
 from genalg.biology import *
 import random
 import time
@@ -35,9 +35,8 @@ def main(stdscr):
     height, width = curses.LINES, curses.COLS
     Blique.x = (3 * height - Blique.width) // 2
     Blique.y = (height - Blique.height) // 2
-    g = GeneticAlg()
     bliques = Population(size=15, member=Blique, initialize=True)
-    for i, gen in enumerate(g.stepper(bliques, elitism=False)):
+    for i, gen in enumerate(ga.stepper(bliques, elitism=False)):
         environment = Environment(height, width, gen)
         if i % 10 == 0:
             environment.update()
@@ -210,10 +209,11 @@ class Environment:
         self.view_width = 3 * height
         self.view = curses.newwin(self.view_height, self.view_width, 0, 0)
         self.info_box = curses.newwin(self.view_height, width - self.view_width, 0, self.view_width)
+        self.info_box.border()
         header = '{:<2} {:<5} {:<10} {:<3} {:<5}'.format('#', 'F', 'Name', 'Age', 'Distance')
         delimeter = '-  -     ----       --- --------'
-        addstr(self.info_box, 1, 0, header)
-        addstr(self.info_box, 1, 1, delimeter)
+        addstr(self.info_box, 1, 1, header)
+        addstr(self.info_box, 1, 2, delimeter)
         self.grid = grid or self.make_grid()
         self.bliques = bliques
         for ind in self.bliques:
@@ -223,7 +223,7 @@ class Environment:
         grid = [None for _ in range(self.view_width * self.view_height)]
         for x in range(self.view_width):
             for y in range(self.view_height):
-                if 0 < x < self.view_width - 1 and 0 < y < self.view_height - 1:
+                if 0 <= x < self.view_width and 0 <= y < self.view_height:
                     grid[y * self.view_width + x] = Tile()
                 else:
                     grid[y * self.view_width + x] = Wall()
@@ -260,7 +260,7 @@ class Environment:
         self.view.refresh()
 
     def update_info(self):
-        offset = 2
+        offset = 3
         sorted_bliques = sorted(self.bliques, key=lambda b: b.fitness(), reverse=True)
         for i, blique in enumerate(sorted_bliques):
             row = i + offset
@@ -268,16 +268,18 @@ class Environment:
             addstr(self.info_box, 1, row, info)
         self.info_box.refresh()
 
-    def update(self):
+    def update(self, bliques=None):
+        bliques = bliques or self.bliques
         self.view.clear()
         for x in range(self.view_width):
             for y in range(self.view_height):
                 char = str(self.grid[y * self.view_width + x])
                 addstr(self.view, x, y, char)
+        self.view.border()
         self.view.refresh()
         self.update_info()
-        for blique in self.bliques:
-            self.draw_blique(blique)
+        for b in bliques:
+            self.draw_blique(b)
 
     def simulate(self, animate=False):
         for b in self.bliques:
@@ -285,23 +287,19 @@ class Environment:
         to_draw = [b for b in self.bliques if b.alive]
         if not animate:
             addstr(self.view, (self.view_width - len('SIMULATING')) // 2, self.view_height // 2, 'SIMULATING')
+            self.view.border()
             self.view.refresh()
         while to_draw:
             for b in to_draw:
-                if animate:
-                    self.undraw_blique(b)
                 b.step()
-                if b.alive:
-                    if animate:
-                        if b is self.bliques.get_fittest():
-                            self.draw_blique(b, color=curses.color_pair(2))
-                        else:
-                            self.draw_blique(b)
-                else:
+                if not b.alive:
                     to_draw.remove(b)
-            self.update_info()
             if animate:
+                self.update(to_draw)
                 time.sleep(ANIMATION_SPEED)
+            self.update_info()
+
+        
 
     def str_rep(self):
         grid = ''
@@ -322,6 +320,9 @@ class Brain:
             self.set_layer2_weights([[random.uniform(-1, 1) for _ in range(num_out)] for _ in range(conv_size)])
 
     def process(self, *inputs):
+        """Uses inputs from INPUTS, convolving to the convolution layer and again from
+        the convolution later to the final output. Must have the number of inputs defined
+        for this Brain"""
         assert(len(inputs) == self.num_in)
         self.inputs = inputs
         self.conv_layer = self.convolve(self.inputs, self.layer1)
@@ -330,6 +331,9 @@ class Brain:
         return self.output
 
     def convolve(self, inputs, weight_set):
+        """Given a list of INPUTS and WEIGHT_SET, a list of list of edge weights. Element
+        j from list i from WEIGHT_SET is the edge weight from input i to node j in the
+        next layer. Returns the list representing the values of the convolution layer."""
         output_layer = [0 for _ in range(len(weight_set[0]))]
         for i, weights in zip(inputs, weight_set):
             for dst, w in enumerate(weights):
