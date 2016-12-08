@@ -1,33 +1,31 @@
 from genalg.biology import *
 import time
 
-class GeneticAlg:
+max_iter = 5000
 
-    max_iter = 5000
+def evolve(pop, iterations=None, elitism=True, mutation=True):
+    gen = self.stepper(pop, iterations, elitism, mutation)
+    for current_pop in gen:
+        pass
+    return current_pop
 
-    def __init__(self, max_iter=max_iter):
-        self.max_iter = max_iter
+def stepper(pop, iterations=None, tournament_size=10, elitism=True, mutation=True):
+    iterations = iterations or max_iter
+    for i in range(iterations):
+        yield pop
+        pop = step(pop, iterations, tournament_size, elitism, mutation)
 
-    def evolve(self, pop, iterations=max_iter, elitism=True, mutation=True):
-        gen = self.stepper(pop, iterations, elitism, mutation)
-        for current_pop in gen:
-            pass
-        return current_pop
+def step(pop, iterations=None, tournament_size=10, elitism=True, mutation=True):
 
-    def stepper(self, pop, iterations=max_iter, tournament_size=10, elitism=True, mutation=True):
-        for i in range(iterations):
-            yield pop
-            new_pop = Population(size=pop.size, member=pop.member, initialize=False)
+    new_pop = Population(size=pop.size, member=pop.member, initialize=False)
+    if elitism:
+        new_pop.add_individual(pop.get_fittest())
+    elitism_offset = 1 if elitism else 0
+    t_size = min(tournament_size, pop.size)
 
-            if elitism:
-                new_pop.add_individual(pop.get_fittest())
-            elitism_offset = 1 if elitism else 0
-
-            for _ in range(elitism_offset, pop.size):
-                t_size = min(tournament_size, pop.size)
-                parent1 = pop.tournament(t_size)
-                parent2 = pop.tournament(t_size)
-                offspring = parent1.mate(parent2, mutation)
-                new_pop.add_individual(offspring)
-
-            pop = new_pop
+    for _ in range(elitism_offset, pop.size):
+        parent1 = pop.tournament(t_size)
+        parent2 = pop.tournament(t_size)
+        offspring = parent1.mate(parent2, mutation)
+        new_pop.add_individual(offspring)
+    return new_pop
