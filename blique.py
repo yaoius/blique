@@ -8,16 +8,16 @@ import math
 __author__ = 'Dillon Yao'
 VERSION, BUILD = 0, 2
 
-NORTH = 0
-EAST = 1
-SOUTH = 2
-WEST = 3
-
-LEFT = -1
-RIGHT = 1
-
 ANIMATION_SPEED = 0.05
 STEP = 5
+
+class Directions:
+    NORTH = 0
+    EAST = 1
+    SOUTH = 2
+    WEST = 3
+    LEFT = 4
+    RIGHT = 5
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
@@ -53,7 +53,7 @@ def main(stdscr):
         env.evolve_pop()
 
 class Blique(Individual):
-
+    """Creates a creature who dies upon touching a wall"""
     genome_length = 75
     max_move_distance = 3
     max_age = 30
@@ -140,7 +140,7 @@ class Blique(Individual):
         return dist
 
     def move(self, amt=1):
-        """Moves the Blique in the directino that it is facing by AMT tiles"""
+        """Moves the Blique in the direction that it is facing by AMT tiles"""
         if self.facing == NORTH:
             self.y -= amt
         elif self.facing == EAST:
@@ -152,7 +152,7 @@ class Blique(Individual):
         self.distance_traveled += amt
 
     def turn(self, direction):
-        """Turns the Blique 90deg clockwise DIRECTINON times. Using -1 turns the blique
+        """Turns the Blique 90deg clockwise DIRECTION times. Using -1 turns the blique
         left and 1 turns the blique right."""
         self.facing = (self.facing + direction) % 4
 
@@ -166,15 +166,19 @@ class Blique(Individual):
             return lambda: self.move(m1 << 1 + m2)
 
     def get_tiles_under(self):
+        """Returns the tiles under the blique as a list"""
         if not self.env:
             raise Exception('Blique is not in an Environment')
         return [self.env.get_tile(self.x + dx, self.y + dy) for dx in range(self.width) for dy in range(self.height)]
 
     def simulate(self):
+        """Continues to call STEP until the blique is dead"""
         while self.alive:
             self.step()
 
     def step(self):
+        """The blique will find how far it is to the nearest wall and take a move based
+        on that output"""
         distance_to_obstacle = self.look_ahead()
         next_move = self.get_next_move(distance_to_obstacle)
         next_move()
@@ -185,12 +189,16 @@ class Blique(Individual):
             self.age += ANIMATION_SPEED * 4
 
     def read_genome(self):
+        """Creates a Brain instance (a neural network) with a single input and 5 outputs
+        and a single convolution layer with 4 nodes. Weights are determined by genes
+        of length 4 in the input subsequence"""
         self.brain = Brain(1, 4, 5)
         genes = [self.read_gene(self.genome.subsequence(i, i+3)) for i in range(0, self.genome_length, 3)]
         self.brain.set_layer1_weights([genes[:5]])
         self.brain.set_layer2_weights([genes[5:9], genes[9:13], genes[13:17], genes[17:21], genes[21:25]])
 
     def read_gene(self, gene):
+        """Returns the binary value of the gene read using a sign bit"""
         weight = 1
         for i in gene[:-1]:
             weight = weight << 1
@@ -200,20 +208,25 @@ class Blique(Individual):
         return weight
 
     def fitness(self):
-        return int(self.distance_traveled*5 + self.age)
+        """Returns the fitness of the current Blique"""
+        return int(self.distance_traveled * 5 + self.age)
 
     def load_state(self, state):
+        """Set the current blique's state to STATE"""
         self.alive, self.age, self.distance_traveled, _, coord = state
         self.x, self.y = coord
         self.set_eye()
 
     def reset(self):
+        """Revert's the blique to its initial state"""
         self.load_state(self.initial_state)
 
     def bio(self):
+        """Returns identification info on the blique"""
         return self.name, self.parents
 
     def state(self):
+        """Returns a tuple representing the blique's state"""
         return self.alive, self.age, self.distance_traveled, self.fitness(), (self.x, self.y)
 
 class Environment:
@@ -222,6 +235,7 @@ class Environment:
     title = 'Blique Evolution Sim v {}.{}'.format(VERSION, BUILD)
 
     def __init__(self, height, width, bliques, grid=None):
+        """TODO: add support for input file grids"""
         self.width = width
         self.height = height
         self.generation = 0
